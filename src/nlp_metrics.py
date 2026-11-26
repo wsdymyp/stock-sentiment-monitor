@@ -119,6 +119,7 @@ class RiskAssessment:
     active_tiers: List[int]
     has_official_announcement: bool
     sample_phrases: List[str]
+    pct_change_5d: float = 0.0
 
     def to_summary_dict(self) -> Dict:
         return {
@@ -338,8 +339,7 @@ def classify_regime(
 
     if (
         abs(market.pct_change_5d) <= config.low_position_5d_abs_pct
-        and emotion_direction == "bull"
-        and propagation_stage in ("early_seed", "retail_spread")
+        and emotion_direction in ("bull", "mixed")
     ):
         return "低位潜伏造势型"
 
@@ -391,4 +391,5 @@ def evaluate_symbol_risk(
         active_tiers=active_tiers,
         has_official_announcement=market.has_official_announcement,
         sample_phrases=sample_phrases,
+        pct_change_5d=market.pct_change_5d,
     )

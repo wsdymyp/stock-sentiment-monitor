@@ -120,11 +120,20 @@ class SentimentMonitor:
                     logger.error("Error processing %s: %s", t["symbol"], exc)
 
         ranked = sorted(results, key=lambda r: r.risk_score, reverse=True)
-        top_results = ranked[: self.config.top_n_output]
+        if self.config.focus_regime:
+            filtered = [r for r in ranked if r.regime == self.config.focus_regime]
+            title = "低位潜伏高分" if self.config.focus_regime == "低位潜伏造势型" else self.config.focus_regime
+        else:
+            filtered = ranked
+            title = "舆情监控评分"
+
+        top_results = filtered[: self.config.top_n_output]
         if top_results and self.config.send_top10_summary:
             self.notifier.send_text(
-                format_top10_summary(top_results, top_n=self.config.top_n_output)
+                format_top10_summary(top_results, top_n=self.config.top_n_output, title=title)
             )
+        elif self.config.focus_regime:
+            logger.info("No symbols matched focus_regime=%s in this scan.", self.config.focus_regime)
         return top_results
 
     def run_forever(self, use_mock: bool = False) -> None:

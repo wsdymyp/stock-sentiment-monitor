@@ -32,6 +32,7 @@ def build_config_from_env(db_path: str) -> MonitorConfig:
         nonebot_token=os.getenv("NONEBOT_TOKEN", "").strip(),
         watchlist=watchlist,
         send_top10_summary=send_top10,
+        focus_regime=os.getenv("FOCUS_REGIME", "低位潜伏造势型").strip(),
     )
 
 

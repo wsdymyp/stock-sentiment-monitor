@@ -34,15 +34,19 @@ def format_alert_message(assessment: RiskAssessment) -> str:
     )
 
 
-def format_top10_summary(assessments: List[RiskAssessment], top_n: int = 10) -> str:
+def format_top10_summary(
+    assessments: List[RiskAssessment],
+    top_n: int = 10,
+    title: str = "低位潜伏高分",
+) -> str:
     """Format a Top-N ranked sentiment risk summary (includes '预警' for webhook keyword filter)."""
     ranked = sorted(assessments, key=lambda r: r.risk_score, reverse=True)[:top_n]
-    lines = [f"【舆情监控 Top{len(ranked)} 评分播报｜预警参考】"]
+    lines = [f"【{title} Top{len(ranked)} 播报｜预警参考】"]
     for idx, r in enumerate(ranked, start=1):
         ann = "有公告" if r.has_official_announcement else "无公告"
         lines.append(
             f"{idx}. {r.name}({r.symbol}) | 风险分:{r.risk_score:.1f} | "
-            f"{r.regime} | UV:{r.uv_count} | 同质:{r.homogeneity_ratio:.0%} | {ann}"
+            f"5日:{r.pct_change_5d:+.1f}% | UV:{r.uv_count} | 同质:{r.homogeneity_ratio:.0%} | {ann}"
         )
     return "\n".join(lines)
 

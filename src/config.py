@@ -66,7 +66,7 @@ class MonitorConfig:
 
     # Market regime thresholds
     high_position_5d_pct: float = 15.0
-    low_position_5d_abs_pct: float = 5.0
+    low_position_5d_abs_pct: float = 6.0
     panic_drop_5d_pct: float = -10.0
 
     # Polling intervals (seconds) by market session
@@ -83,6 +83,7 @@ class MonitorConfig:
 
     # Watchlist (empty = scan market hot symbols)
     watchlist: List[str] = field(default_factory=list)
-    hot_scan_limit: int = 20
+    hot_scan_limit: int = 30
     top_n_output: int = 10
     send_top10_summary: bool = True
+    focus_regime: str = "低位潜伏造势型"
