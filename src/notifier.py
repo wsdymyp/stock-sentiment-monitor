@@ -46,7 +46,8 @@ def format_top10_summary(
         ann = "有公告" if r.has_official_announcement else "无公告"
         lines.append(
             f"{idx}. {r.name}({r.symbol}) | 风险分:{r.risk_score:.1f} | "
-            f"5日:{r.pct_change_5d:+.1f}% | UV:{r.uv_count} | 同质:{r.homogeneity_ratio:.0%} | {ann}"
+            f"今日:{r.pct_change_today:+.1f}% | 5日:{r.pct_change_5d:+.1f}% | "
+            f"UV:{r.uv_count} | 同质:{r.homogeneity_ratio:.0%} | {ann}"
         )
     return "\n".join(lines)
 

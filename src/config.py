@@ -67,6 +67,7 @@ class MonitorConfig:
     # Market regime thresholds
     high_position_5d_pct: float = 15.0
     low_position_5d_abs_pct: float = 6.0
+    low_position_today_max_pct: float = 4.5
     panic_drop_5d_pct: float = -10.0
 
     # Polling intervals (seconds) by market session

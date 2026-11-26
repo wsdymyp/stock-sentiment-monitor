@@ -64,11 +64,17 @@ class MarketContextCollector:
             if df is not None and len(df) >= 2:
                 recent = df.tail(6)
                 close_now = float(recent.iloc[-1]["收盘"])
-                close_prev = float(recent.iloc[0]["收盘"])
-                if close_prev > 0:
-                    ctx.pct_change_5d = ((close_now - close_prev) / close_prev) * 100.0
+                close_prev_5d = float(recent.iloc[0]["收盘"])
+                close_prev_1d = float(recent.iloc[-2]["收盘"])
+                if close_prev_5d > 0:
+                    ctx.pct_change_5d = ((close_now - close_prev_5d) / close_prev_5d) * 100.0
+                if "涨跌幅" in recent.columns:
+                    ctx.pct_change_today = float(recent.iloc[-1]["涨跌幅"])
+                elif close_prev_1d > 0:
+                    ctx.pct_change_today = ((close_now - close_prev_1d) / close_prev_1d) * 100.0
                 if "换手率" in recent.columns:
                     ctx.turnover_rate = float(recent.iloc[-1]["换手率"])
+                ctx.price_fetched = True
         except Exception as exc:
             logger.debug("akshare price fetch failed for %s: %s", symbol, exc)
 
@@ -281,8 +287,10 @@ def generate_mock_scenario(
     market = MarketContext(
         symbol=symbol,
         name=name,
+        pct_change_today=1.2,
         pct_change_5d=1.8,
         turnover_rate=3.4,
+        price_fetched=True,
         has_official_announcement=False,
     )
     posts = []

@@ -9,7 +9,9 @@ from src.collectors import generate_mock_scenario
 from src.config import MonitorConfig
 from src.monitor import SentimentMonitor, get_adaptive_interval
 from src.nlp_metrics import (
+    MarketContext,
     RiskAssessment,
+    classify_regime,
     compute_emotion_density,
     compute_homogeneity,
     compute_simhash,
@@ -153,6 +155,21 @@ class TestSentimentMonitor(unittest.TestCase):
         self.assertIn("1. 股12(000012)", summary)
         self.assertIn("10. 股3(000003)", summary)
         self.assertNotIn("股2(000002)", summary)
+
+    def test_low_position_excludes_limit_up_and_unfetched_price(self) -> None:
+        cfg = MonitorConfig()
+        unfetched = MarketContext(symbol="000001", price_fetched=False, pct_change_5d=0.0)
+        self.assertNotEqual(
+            classify_regime(unfetched, "bull", "isolated", cfg),
+            "低位潜伏造势型",
+        )
+        limit_up_today = MarketContext(
+            symbol="000002", price_fetched=True, pct_change_today=10.0, pct_change_5d=2.0
+        )
+        self.assertNotEqual(
+            classify_regime(limit_up_today, "bull", "isolated", cfg),
+            "低位潜伏造势型",
+        )
 
 
 if __name__ == "__main__":

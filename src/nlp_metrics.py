@@ -93,8 +93,10 @@ class MarketContext:
 
     symbol: str
     name: str = ""
+    pct_change_today: float = 0.0
     pct_change_5d: float = 0.0
     turnover_rate: float = 0.0
+    price_fetched: bool = False
     has_official_announcement: bool = False
     announcement_title: str = ""
 
@@ -120,6 +122,7 @@ class RiskAssessment:
     has_official_announcement: bool
     sample_phrases: List[str]
     pct_change_5d: float = 0.0
+    pct_change_today: float = 0.0
 
     def to_summary_dict(self) -> Dict:
         return {
@@ -338,7 +341,9 @@ def classify_regime(
         return "高位诱多出货型"
 
     if (
-        abs(market.pct_change_5d) <= config.low_position_5d_abs_pct
+        market.price_fetched
+        and -5.0 <= market.pct_change_today <= config.low_position_today_max_pct
+        and abs(market.pct_change_5d) <= config.low_position_5d_abs_pct
         and emotion_direction in ("bull", "mixed")
     ):
         return "低位潜伏造势型"
@@ -392,4 +397,5 @@ def evaluate_symbol_risk(
         has_official_announcement=market.has_official_announcement,
         sample_phrases=sample_phrases,
         pct_change_5d=market.pct_change_5d,
+        pct_change_today=market.pct_change_today,
     )
