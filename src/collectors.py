@@ -168,50 +168,69 @@ class CommunityCollector:
         max_60d_pct: float = 30.0,
     ) -> List[Dict[str, str]]:
         """
-        Two-stage funnel over ALL Main Board A-shares:
-        1) Fetch full market snapshot (ak.stock_zh_a_spot_em)
-        2) Keep non-ST Main Board stocks at low position with active turnover
-        3) Return top `limit` candidates by activity (量比 * 换手率) for NLP scan
+        Fast two-stage funnel over Main Board A-shares:
+        1) Query Eastmoney Main Board snapshot (1-2 requests sorted by turnover rate)
+        2) Fallback to Sina spot (ak.stock_zh_a_spot) or Eastmoney hot rank
+        3) Keep non-ST Main Board stocks at low position with active turnover
         """
-        if not _HAS_AKSHARE:
-            return []
-        try:
-            df = ak.stock_zh_a_spot_em()
-            if df is None or df.empty:
-                return []
+        candidates: List[tuple] = []
 
-            candidates = []
-            for _, row in df.iterrows():
-                code = str(row.get("代码", "")).strip()
-                name = str(row.get("名称", "")).strip()
-                if not is_main_board_a_share(code, name):
-                    continue
-
+        # Primary: Eastmoney clist API (Main Board only: m:0+t:6,m:1+t:2, sorted by turnover f8)
+        if _HAS_REQUESTS:
+            headers = {
+                **self.HEADERS,
+                "Referer": "https://quote.eastmoney.com/",
+            }
+            for page in (1, 2):
+                url = (
+                    "https://push2.eastmoney.com/api/qt/clist/get"
+                    f"?pn={page}&pz=150&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281"
+                    "&fltt=2&invt=2&fid=f8&fs=m:0+t:6,m:1+t:2"
+                    "&fields=f12,f14,f3,f6,f8,f10,f24"
+                )
                 try:
-                    pct_today = float(row.get("涨跌幅", 999))
-                    amount = float(row.get("成交额", 0))
-                    turnover = float(row.get("换手率", 0))
-                    vol_ratio = float(row.get("量比", 1.0) or 1.0)
-                    pct_60d = float(row.get("60日涨跌幅", 0) or 0)
-                except (TypeError, ValueError):
-                    continue
+                    resp = requests.get(url, headers=headers, timeout=10)
+                    resp.raise_for_status()
+                    diff = (resp.json().get("data") or {}).get("diff") or []
+                    for item in diff:
+                        code = str(item.get("f12", "")).strip()
+                        name = str(item.get("f14", "")).strip()
+                        if not is_main_board_a_share(code, name):
+                            continue
+                        try:
+                            pct_today = float(item.get("f3", 999))
+                            amount = float(item.get("f6", 0) or 0)
+                            turnover = float(item.get("f8", 0) or 0)
+                            vol_ratio = float(item.get("f10", 1.0) or 1.0)
+                            pct_60d = float(item.get("f24", 0) or 0)
+                        except (TypeError, ValueError):
+                            continue
 
-                if not (-5.0 <= pct_today <= today_max_pct):
-                    continue
-                if pct_60d > max_60d_pct:
-                    continue
-                if amount < 5e7 or turnover < 1.0:
-                    continue
+                        if not (-5.0 <= pct_today <= today_max_pct):
+                            continue
+                        if pct_60d > max_60d_pct:
+                            continue
+                        if amount < 5e7 or turnover < 1.0:
+                            continue
+                        candidates.append((turnover * max(vol_ratio, 0.5), code, name))
+                except Exception as exc:
+                    logger.warning("Eastmoney clist page %d failed: %s", page, exc)
 
-                activity_score = turnover * max(vol_ratio, 0.5)
-                candidates.append((activity_score, code, name))
-
+        if candidates:
             candidates.sort(key=lambda x: x[0], reverse=True)
-            return [{"symbol": c[1], "name": c[2]} for c in candidates[:limit]]
-        except Exception as exc:
-            logger.warning("Main Board snapshot fetch failed, falling back to hot rank: %s", exc)
-            hot = self.fetch_hot_symbols(limit=limit)
-            return [h for h in hot if is_main_board_a_share(h["symbol"], h.get("name", ""))]
+            seen = set()
+            unique_out: List[Dict[str, str]] = []
+            for _, code, name in candidates:
+                if code not in seen:
+                    seen.add(code)
+                    unique_out.append({"symbol": code, "name": name})
+                if len(unique_out) >= limit:
+                    break
+            return unique_out
+
+        # Fallback: Eastmoney hot rank filtered to Main Board
+        hot = self.fetch_hot_symbols(limit=max(limit, 50))
+        return [h for h in hot if is_main_board_a_share(h["symbol"], h.get("name", ""))][:limit]
 
     def fetch_hot_symbols(self, limit: int = 10) -> List[Dict[str, str]]:
         """Fetch top hot A-share symbols via akshare if available."""
