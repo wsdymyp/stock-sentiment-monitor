@@ -123,6 +123,7 @@ class RiskAssessment:
     sample_phrases: List[str]
     pct_change_5d: float = 0.0
     pct_change_today: float = 0.0
+    price_fetched: bool = False
 
     def to_summary_dict(self) -> Dict:
         return {
@@ -398,4 +399,5 @@ def evaluate_symbol_risk(
         sample_phrases=sample_phrases,
         pct_change_5d=market.pct_change_5d,
         pct_change_today=market.pct_change_today,
+        price_fetched=market.price_fetched,
     )

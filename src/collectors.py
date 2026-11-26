@@ -51,32 +51,57 @@ class MarketContextCollector:
         if not code:
             return ctx
 
-        try:
-            end_dt = now_shanghai()
-            start_dt = end_dt - timedelta(days=14)
-            df = ak.stock_zh_a_hist(
-                symbol=code,
-                period="daily",
-                start_date=start_dt.strftime("%Y%m%d"),
-                end_date=end_dt.strftime("%Y%m%d"),
-                adjust="qfq",
+        # Primary: Sina Finance K-line (avoids Eastmoney push2 rate limits on GitHub Actions)
+        if _HAS_REQUESTS:
+            prefix = "sh" if code.startswith(("6", "9")) else "sz"
+            sina_url = (
+                "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+                f"CN_MarketData.getKLineData?symbol={prefix}{code}&scale=240&ma=no&datalen=6"
             )
-            if df is not None and len(df) >= 2:
-                recent = df.tail(6)
-                close_now = float(recent.iloc[-1]["收盘"])
-                close_prev_5d = float(recent.iloc[0]["收盘"])
-                close_prev_1d = float(recent.iloc[-2]["收盘"])
-                if close_prev_5d > 0:
-                    ctx.pct_change_5d = ((close_now - close_prev_5d) / close_prev_5d) * 100.0
-                if "涨跌幅" in recent.columns:
-                    ctx.pct_change_today = float(recent.iloc[-1]["涨跌幅"])
-                elif close_prev_1d > 0:
-                    ctx.pct_change_today = ((close_now - close_prev_1d) / close_prev_1d) * 100.0
-                if "换手率" in recent.columns:
-                    ctx.turnover_rate = float(recent.iloc[-1]["换手率"])
-                ctx.price_fetched = True
-        except Exception as exc:
-            logger.debug("akshare price fetch failed for %s: %s", symbol, exc)
+            try:
+                resp = requests.get(sina_url, headers=CommunityCollector.HEADERS, timeout=8)
+                resp.raise_for_status()
+                bars = resp.json()
+                if isinstance(bars, list) and len(bars) >= 2:
+                    close_now = float(bars[-1]["close"])
+                    close_prev_5d = float(bars[0]["close"])
+                    close_prev_1d = float(bars[-2]["close"])
+                    if close_prev_5d > 0:
+                        ctx.pct_change_5d = ((close_now - close_prev_5d) / close_prev_5d) * 100.0
+                    if close_prev_1d > 0:
+                        ctx.pct_change_today = ((close_now - close_prev_1d) / close_prev_1d) * 100.0
+                    ctx.price_fetched = True
+            except Exception as exc:
+                logger.debug("Sina kline fetch failed for %s: %s", symbol, exc)
+
+        # Fallback: akshare Eastmoney K-line
+        if not ctx.price_fetched and _HAS_AKSHARE:
+            try:
+                end_dt = now_shanghai()
+                start_dt = end_dt - timedelta(days=14)
+                df = ak.stock_zh_a_hist(
+                    symbol=code,
+                    period="daily",
+                    start_date=start_dt.strftime("%Y%m%d"),
+                    end_date=end_dt.strftime("%Y%m%d"),
+                    adjust="qfq",
+                )
+                if df is not None and len(df) >= 2:
+                    recent = df.tail(6)
+                    close_now = float(recent.iloc[-1]["收盘"])
+                    close_prev_5d = float(recent.iloc[0]["收盘"])
+                    close_prev_1d = float(recent.iloc[-2]["收盘"])
+                    if close_prev_5d > 0:
+                        ctx.pct_change_5d = ((close_now - close_prev_5d) / close_prev_5d) * 100.0
+                    if "涨跌幅" in recent.columns:
+                        ctx.pct_change_today = float(recent.iloc[-1]["涨跌幅"])
+                    elif close_prev_1d > 0:
+                        ctx.pct_change_today = ((close_now - close_prev_1d) / close_prev_1d) * 100.0
+                    if "换手率" in recent.columns:
+                        ctx.turnover_rate = float(recent.iloc[-1]["换手率"])
+                    ctx.price_fetched = True
+            except Exception as exc:
+                logger.debug("akshare price fetch failed for %s: %s", symbol, exc)
 
         try:
             notices = self._get_today_notices()
@@ -175,8 +200,41 @@ class CommunityCollector:
         """
         candidates: List[tuple] = []
 
-        # Primary: Eastmoney clist API (Main Board only: m:0+t:6,m:1+t:2, sorted by turnover f8)
+        # Primary: Sina Finance Main Board list sorted by turnoverratio (bypasses Eastmoney push2 limits)
         if _HAS_REQUESTS:
+            for page in (1, 2, 3):
+                sina_list_url = (
+                    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+                    f"Market_Center.getHQNodeData?page={page}&num=100&sort=turnoverratio&asc=0&node=hs_a"
+                )
+                try:
+                    resp = requests.get(sina_list_url, headers=self.HEADERS, timeout=10)
+                    resp.raise_for_status()
+                    items = resp.json()
+                    if not isinstance(items, list):
+                        continue
+                    for item in items:
+                        code = str(item.get("code", "")).strip()
+                        name = str(item.get("name", "")).strip()
+                        if not is_main_board_a_share(code, name):
+                            continue
+                        try:
+                            pct_today = float(item.get("changepercent", 999))
+                            amount = float(item.get("amount", 0) or 0)
+                            turnover = float(item.get("turnoverratio", 0) or 0)
+                        except (TypeError, ValueError):
+                            continue
+
+                        if not (-5.0 <= pct_today <= today_max_pct):
+                            continue
+                        if amount < 5e7 or turnover < 1.0:
+                            continue
+                        candidates.append((turnover, code, name))
+                except Exception as exc:
+                    logger.warning("Sina list page %d failed: %s", page, exc)
+
+        # Secondary: Eastmoney clist API
+        if not candidates and _HAS_REQUESTS:
             headers = {
                 **self.HEADERS,
                 "Referer": "https://quote.eastmoney.com/",
