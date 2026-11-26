@@ -27,6 +27,21 @@ except ImportError:
 class MarketContextCollector:
     """Fetches 5-day price change, turnover, and official announcements via akshare."""
 
+    def __init__(self) -> None:
+        self._cached_notices = None
+        self._cached_notice_date: str = ""
+
+    def _get_today_notices(self):
+        today = now_shanghai().strftime("%Y%m%d")
+        if self._cached_notice_date != today:
+            self._cached_notice_date = today
+            try:
+                self._cached_notices = ak.stock_notice_report(symbol="全部", date=today)
+            except Exception as exc:
+                logger.debug("akshare notice fetch failed: %s", exc)
+                self._cached_notices = None
+        return self._cached_notices
+
     def get_context(self, symbol: str, name: str = "") -> MarketContext:
         ctx = MarketContext(symbol=symbol, name=name or symbol)
         if not _HAS_AKSHARE:
@@ -58,7 +73,7 @@ class MarketContextCollector:
             logger.debug("akshare price fetch failed for %s: %s", symbol, exc)
 
         try:
-            notices = ak.stock_notice_report(symbol="全部", date=now_shanghai().strftime("%Y%m%d"))
+            notices = self._get_today_notices()
             if notices is not None and not notices.empty and "代码" in notices.columns:
                 matched = notices[notices["代码"].astype(str) == code]
                 if not matched.empty:
@@ -66,7 +81,7 @@ class MarketContextCollector:
                     title_col = "公告标题" if "公告标题" in matched.columns else matched.columns[1]
                     ctx.announcement_title = str(matched.iloc[0][title_col])
         except Exception as exc:
-            logger.debug("akshare notice fetch failed for %s: %s", symbol, exc)
+            logger.debug("akshare notice check failed for %s: %s", symbol, exc)
 
         return ctx
 

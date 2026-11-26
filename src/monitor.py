@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from .collectors import CommunityCollector, MarketContextCollector, generate_mock_scenario
 from .config import MonitorConfig
 from .nlp_metrics import MarketContext, RiskAssessment, evaluate_symbol_risk
-from .notifier import AlertNotifier
+from .notifier import AlertNotifier, format_top10_summary
 from .storage import MonitorStorage, now_shanghai
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ class SentimentMonitor:
         return assessment
 
     def run_once(self, use_mock: bool = False) -> List[RiskAssessment]:
-        """Execute one full scan across watchlist or market hot symbols."""
+        """Execute one full scan across watchlist or market hot symbols, returning Top-N by score."""
         results: List[RiskAssessment] = []
         if use_mock:
             for sc in ("high_bull_trap", "official_news", "panic_selloff", "low_seeding"):
@@ -102,22 +102,30 @@ class SentimentMonitor:
                     override_market=m,
                 )
                 results.append(res)
-            return results
+        else:
+            targets: List[Dict[str, str]] = [
+                {"symbol": s, "name": s} for s in self.config.watchlist
+            ]
+            if not targets:
+                targets = self.community_collector.fetch_hot_symbols(
+                    limit=self.config.hot_scan_limit
+                )
 
-        targets: List[Dict[str, str]] = [
-            {"symbol": s, "name": s} for s in self.config.watchlist
-        ]
-        if not targets:
-            targets = self.community_collector.fetch_hot_symbols(limit=10)
+            for t in targets:
+                try:
+                    res = self.process_symbol(t["symbol"], name=t.get("name", ""))
+                    results.append(res)
+                    time.sleep(1.0)  # Polite delay between symbols
+                except Exception as exc:
+                    logger.error("Error processing %s: %s", t["symbol"], exc)
 
-        for t in targets:
-            try:
-                res = self.process_symbol(t["symbol"], name=t.get("name", ""))
-                results.append(res)
-                time.sleep(1.5)  # Polite delay between symbols
-            except Exception as exc:
-                logger.error("Error processing %s: %s", t["symbol"], exc)
-        return results
+        ranked = sorted(results, key=lambda r: r.risk_score, reverse=True)
+        top_results = ranked[: self.config.top_n_output]
+        if top_results and self.config.send_top10_summary:
+            self.notifier.send_text(
+                format_top10_summary(top_results, top_n=self.config.top_n_output)
+            )
+        return top_results
 
     def run_forever(self, use_mock: bool = False) -> None:
         """Run adaptive 24/7 loop with exception recovery for Colab."""

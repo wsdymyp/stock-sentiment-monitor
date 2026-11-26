@@ -9,6 +9,7 @@ from src.collectors import generate_mock_scenario
 from src.config import MonitorConfig
 from src.monitor import SentimentMonitor, get_adaptive_interval
 from src.nlp_metrics import (
+    RiskAssessment,
     compute_emotion_density,
     compute_homogeneity,
     compute_simhash,
@@ -16,6 +17,7 @@ from src.nlp_metrics import (
     evaluate_symbol_risk,
     hamming_distance,
 )
+from src.notifier import format_top10_summary
 from src.storage import SHANGHAI_TZ
 
 
@@ -123,6 +125,34 @@ class TestSentimentMonitor(unittest.TestCase):
         self.assertEqual(get_adaptive_interval(cfg, pre_market), cfg.active_interval_sec)
         self.assertEqual(get_adaptive_interval(cfg, intraday), cfg.intraday_interval_sec)
         self.assertEqual(get_adaptive_interval(cfg, night), cfg.night_interval_sec)
+
+    def test_top10_summary_ranking(self) -> None:
+        items = [
+            RiskAssessment(
+                symbol=f"0000{i:02d}",
+                name=f"股{i}",
+                risk_score=float(i * 7),
+                regime="测试",
+                uv_count=20 + i,
+                post_count=30,
+                uv_zscore=2.0,
+                homogeneity_ratio=0.5,
+                burst_ratio=0.3,
+                emotion_density=5.0,
+                fundamental_ratio=0.1,
+                emotion_direction="bull",
+                propagation_stage="retail_spread",
+                active_tiers=[2],
+                has_official_announcement=False,
+                sample_phrases=[],
+            )
+            for i in range(1, 13)
+        ]
+        summary = format_top10_summary(items, top_n=10)
+        self.assertIn("预警", summary)
+        self.assertIn("1. 股12(000012)", summary)
+        self.assertIn("10. 股3(000003)", summary)
+        self.assertNotIn("股2(000002)", summary)
 
 
 if __name__ == "__main__":

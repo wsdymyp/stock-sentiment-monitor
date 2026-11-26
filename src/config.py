@@ -83,3 +83,6 @@ class MonitorConfig:
 
     # Watchlist (empty = scan market hot symbols)
     watchlist: List[str] = field(default_factory=list)
+    hot_scan_limit: int = 20
+    top_n_output: int = 10
+    send_top10_summary: bool = True

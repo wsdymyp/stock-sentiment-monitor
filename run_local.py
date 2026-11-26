@@ -19,6 +19,9 @@ def build_config_from_env(db_path: str) -> MonitorConfig:
     raw_group_id = os.getenv("NONEBOT_GROUP_ID", "").strip()
     group_id = int(raw_group_id) if raw_group_id.isdigit() else 0
 
+    raw_summary = os.getenv("SEND_TOP10_SUMMARY", "true").strip().lower()
+    send_top10 = raw_summary not in ("0", "false", "no")
+
     return MonitorConfig(
         db_path=db_path,
         risk_score_threshold=risk_threshold,
@@ -28,6 +31,7 @@ def build_config_from_env(db_path: str) -> MonitorConfig:
         nonebot_group_id=group_id,
         nonebot_token=os.getenv("NONEBOT_TOKEN", "").strip(),
         watchlist=watchlist,
+        send_top10_summary=send_top10,
     )
 
 

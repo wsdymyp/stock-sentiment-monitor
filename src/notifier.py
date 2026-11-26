@@ -1,7 +1,7 @@
 """Alert formatting and delivery for Console, Feishu, DingTalk, WeCom, and NoneBot2."""
 
 import logging
-from typing import Dict
+from typing import Dict, List
 
 from .config import MonitorConfig
 from .nlp_metrics import RiskAssessment
@@ -34,14 +34,30 @@ def format_alert_message(assessment: RiskAssessment) -> str:
     )
 
 
+def format_top10_summary(assessments: List[RiskAssessment], top_n: int = 10) -> str:
+    """Format a Top-N ranked sentiment risk summary (includes '预警' for webhook keyword filter)."""
+    ranked = sorted(assessments, key=lambda r: r.risk_score, reverse=True)[:top_n]
+    lines = [f"【舆情监控 Top{len(ranked)} 评分播报｜预警参考】"]
+    for idx, r in enumerate(ranked, start=1):
+        ann = "有公告" if r.has_official_announcement else "无公告"
+        lines.append(
+            f"{idx}. {r.name}({r.symbol}) | 风险分:{r.risk_score:.1f} | "
+            f"{r.regime} | UV:{r.uv_count} | 同质:{r.homogeneity_ratio:.0%} | {ann}"
+        )
+    return "\n".join(lines)
+
+
 class AlertNotifier:
-    """Dispatches formatted alerts to configured channels."""
+    """Dispatches formatted alerts and summaries to configured channels."""
 
     def __init__(self, config: MonitorConfig) -> None:
         self.config = config
 
     def send(self, assessment: RiskAssessment) -> bool:
-        message = format_alert_message(assessment)
+        return self.send_text(format_alert_message(assessment))
+
+    def send_text(self, message: str) -> bool:
+        """Send a plain text message to the configured channel."""
         logger.info("\n%s", message)
 
         if self.config.webhook_type == "nonebot" and self.config.nonebot_api_url:
