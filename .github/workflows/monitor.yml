@@ -2,8 +2,8 @@ name: 24/7 Sentiment Manipulation Monitor
 
 on:
   schedule:
-    # Run every 15 minutes, 24/7 (UTC)
-    - cron: "*/15 * * * *"
+    # Run every 30 minutes at :07 and :37 UTC to avoid GitHub Actions :00/:15/:30 peak queue drops
+    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       use_mock:

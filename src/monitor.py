@@ -129,16 +129,19 @@ class SentimentMonitor:
         ranked = sorted(results, key=lambda r: r.risk_score, reverse=True)
         if self.config.focus_regime:
             filtered = [r for r in ranked if r.regime == self.config.focus_regime]
-            # Fallback to any low-position, non-announcement Main Board stocks if bull/mixed is empty
-            if not filtered and self.config.focus_regime == "低位潜伏造势型":
-                filtered = [
+            # Top up to top_n_output with other low-position, non-announcement Main Board stocks
+            if len(filtered) < self.config.top_n_output and self.config.focus_regime == "低位潜伏造势型":
+                seen_symbols = {r.symbol for r in filtered}
+                extras = [
                     r
                     for r in ranked
-                    if r.price_fetched
+                    if r.symbol not in seen_symbols
+                    and r.price_fetched
                     and not r.has_official_announcement
                     and -5.0 <= r.pct_change_today <= self.config.low_position_today_max_pct
-                    and abs(r.pct_change_5d) <= self.config.low_position_5d_abs_pct
+                    and abs(r.pct_change_5d) <= (self.config.low_position_5d_abs_pct + 2.0)
                 ]
+                filtered.extend(extras)
             title = "低位潜伏高分" if self.config.focus_regime == "低位潜伏造势型" else self.config.focus_regime
         else:
             filtered = ranked
