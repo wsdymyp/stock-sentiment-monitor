@@ -68,6 +68,7 @@ class MonitorConfig:
     high_position_5d_pct: float = 15.0
     low_position_5d_abs_pct: float = 6.0
     low_position_today_max_pct: float = 4.5
+    low_position_60d_max_pct: float = 30.0
     panic_drop_5d_pct: float = -10.0
 
     # Polling intervals (seconds) by market session
@@ -82,9 +83,10 @@ class MonitorConfig:
     nonebot_group_id: int = 0
     nonebot_token: str = ""
 
-    # Watchlist (empty = scan market hot symbols)
+    # Watchlist (empty = scan all Main Board A-shares via two-stage funnel)
     watchlist: List[str] = field(default_factory=list)
-    hot_scan_limit: int = 30
+    pool_mode: str = "main_board"       # main_board | hot_rank
+    hot_scan_limit: int = 40
     top_n_output: int = 10
     send_top10_summary: bool = True
     focus_regime: str = "低位潜伏造势型"

@@ -92,6 +92,20 @@ class MarketContextCollector:
         return ctx
 
 
+_MAIN_BOARD_PREFIXES = ("600", "601", "603", "605", "000", "001", "002", "003")
+
+
+def is_main_board_a_share(symbol: str, name: str = "") -> bool:
+    """Return True if symbol is a non-ST Shanghai/Shenzhen Main Board A-share."""
+    code = re.sub(r"\D", "", symbol)
+    if len(code) != 6 or not code.startswith(_MAIN_BOARD_PREFIXES):
+        return False
+    upper_name = name.upper()
+    if "ST" in upper_name or "退" in name:
+        return False
+    return True
+
+
 class CommunityCollector:
     """Collects public posts from Eastmoney Guba and Xueqiu with polite rate limits."""
 
@@ -146,6 +160,58 @@ class CommunityCollector:
         except Exception as exc:
             logger.warning("Guba fetch failed for %s: %s", symbol, exc)
         return posts
+
+    def fetch_main_board_low_candidates(
+        self,
+        limit: int = 40,
+        today_max_pct: float = 4.5,
+        max_60d_pct: float = 30.0,
+    ) -> List[Dict[str, str]]:
+        """
+        Two-stage funnel over ALL Main Board A-shares:
+        1) Fetch full market snapshot (ak.stock_zh_a_spot_em)
+        2) Keep non-ST Main Board stocks at low position with active turnover
+        3) Return top `limit` candidates by activity (量比 * 换手率) for NLP scan
+        """
+        if not _HAS_AKSHARE:
+            return []
+        try:
+            df = ak.stock_zh_a_spot_em()
+            if df is None or df.empty:
+                return []
+
+            candidates = []
+            for _, row in df.iterrows():
+                code = str(row.get("代码", "")).strip()
+                name = str(row.get("名称", "")).strip()
+                if not is_main_board_a_share(code, name):
+                    continue
+
+                try:
+                    pct_today = float(row.get("涨跌幅", 999))
+                    amount = float(row.get("成交额", 0))
+                    turnover = float(row.get("换手率", 0))
+                    vol_ratio = float(row.get("量比", 1.0) or 1.0)
+                    pct_60d = float(row.get("60日涨跌幅", 0) or 0)
+                except (TypeError, ValueError):
+                    continue
+
+                if not (-5.0 <= pct_today <= today_max_pct):
+                    continue
+                if pct_60d > max_60d_pct:
+                    continue
+                if amount < 5e7 or turnover < 1.0:
+                    continue
+
+                activity_score = turnover * max(vol_ratio, 0.5)
+                candidates.append((activity_score, code, name))
+
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            return [{"symbol": c[1], "name": c[2]} for c in candidates[:limit]]
+        except Exception as exc:
+            logger.warning("Main Board snapshot fetch failed, falling back to hot rank: %s", exc)
+            hot = self.fetch_hot_symbols(limit=limit)
+            return [h for h in hot if is_main_board_a_share(h["symbol"], h.get("name", ""))]
 
     def fetch_hot_symbols(self, limit: int = 10) -> List[Dict[str, str]]:
         """Fetch top hot A-share symbols via akshare if available."""

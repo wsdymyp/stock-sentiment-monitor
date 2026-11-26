@@ -5,7 +5,7 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from src.collectors import generate_mock_scenario
+from src.collectors import generate_mock_scenario, is_main_board_a_share
 from src.config import MonitorConfig
 from src.monitor import SentimentMonitor, get_adaptive_interval
 from src.nlp_metrics import (
@@ -170,6 +170,15 @@ class TestSentimentMonitor(unittest.TestCase):
             classify_regime(limit_up_today, "bull", "isolated", cfg),
             "低位潜伏造势型",
         )
+
+    def test_main_board_a_share_filter(self) -> None:
+        self.assertTrue(is_main_board_a_share("600519", "贵州茅台"))
+        self.assertTrue(is_main_board_a_share("000001", "平安银行"))
+        self.assertTrue(is_main_board_a_share("SZ002594", "比亚迪"))
+        self.assertFalse(is_main_board_a_share("300750", "宁德时代"))   # ChiNext
+        self.assertFalse(is_main_board_a_share("688981", "中芯国际"))   # STAR
+        self.assertFalse(is_main_board_a_share("830799", "艾融软件"))   # BSE
+        self.assertFalse(is_main_board_a_share("600000", "*ST某股"))    # ST
 
 
 if __name__ == "__main__":

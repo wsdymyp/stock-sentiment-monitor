@@ -107,9 +107,16 @@ class SentimentMonitor:
                 {"symbol": s, "name": s} for s in self.config.watchlist
             ]
             if not targets:
-                targets = self.community_collector.fetch_hot_symbols(
-                    limit=self.config.hot_scan_limit
-                )
+                if self.config.pool_mode == "main_board":
+                    targets = self.community_collector.fetch_main_board_low_candidates(
+                        limit=self.config.hot_scan_limit,
+                        today_max_pct=self.config.low_position_today_max_pct,
+                        max_60d_pct=self.config.low_position_60d_max_pct,
+                    )
+                else:
+                    targets = self.community_collector.fetch_hot_symbols(
+                        limit=self.config.hot_scan_limit
+                    )
 
             for t in targets:
                 try:
